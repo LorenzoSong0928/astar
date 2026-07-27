@@ -102,7 +102,7 @@ def backtrack(parent, start, goal):
 # 展示函数
 def print_grid(grid, path=None, start=None, goal=None):
     path_set = set(path) if path else set()
-
+    print("\n-----print_grid-----")
     for y in range(len(grid)):
         row = []
 
@@ -121,10 +121,12 @@ def print_grid(grid, path=None, start=None, goal=None):
                 row.append(".")
 
         print(" ".join(row))
+    print("-------------------\n")
 
 # 6. 测试
 parent, cost = dijkstra(grid, start, goal)
 path = backtrack(parent, start, goal)
+print_grid(grid, path, start, goal)
 
 print("终点代价：", cost.get(goal))
 print("路径：", path)
