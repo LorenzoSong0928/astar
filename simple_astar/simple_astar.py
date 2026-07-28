@@ -1,20 +1,20 @@
 import heapq
+MAX_RANGE = 20
 
-MAX_RANGE = 10
-
-# 1. 创建网格
+# 1. 创建地图
 grid = [[0] * MAX_RANGE for _ in range(MAX_RANGE)]
 
-# 2. 设置障碍、起点和终点
-grid[1][1] = 1
-grid[1][2] = 1
-grid[1][3] = 1
-
 start = (0, 0)
-goal = (5, 3)
-# for row in grid: print(*row)
+goal = (18, 18)
 
-# 3. 生成合法邻居
+# 在 x=8 处建立一整面竖墙
+for y in range(MAX_RANGE):
+    grid[y][8] = 1
+
+# 只留下一个出口
+grid[12][8] = 0
+
+# 2. 生成合法邻居
 def get_neighbours(pos, grid):
     x, y = pos
     height = len(grid)
@@ -46,7 +46,14 @@ def get_neighbours(pos, grid):
 print(get_neighbours((0, 0), grid))
 print(get_neighbours((1, 0), grid))
 
-# 4. Dijkstra 搜索
+# 3. 曼哈顿距离
+def heuristic(pos, goal):
+    x1, y1 = pos
+    x2, y2 = goal
+
+    return abs(x1 - x2) + abs(y1 - y2)
+
+# 4.1 Dijkstra 搜索
 def dijkstra(grid, start, goal):
     open_set = []
     heapq.heappush(open_set, (0, start))
@@ -78,7 +85,42 @@ def dijkstra(grid, start, goal):
         # TODO 7：把更新后的邻居放入 open_set
                 heapq.heappush(open_set,(cost[neighbour],neighbour))
     # 暂时先不回溯路径
-    return parent, cost
+    return parent, cost, visited
+
+# 4.2 A*搜索
+# 实际上，priority = cost + heuristic，保持原本cost不变，将加上曼哈顿距离进行排列优先级即可
+def astar(grid, start, goal):
+    open_set = []
+
+    start_priority = heuristic(start, goal)
+    heapq.heappush(open_set, (start_priority, start))
+
+    cost = {start: 0}
+    parent = {start: None}
+    visited = set()
+
+    while open_set:
+        current_priority, current = heapq.heappop(open_set)
+
+        if current in visited:
+            continue
+
+        visited.add(current)
+
+        if current == goal:
+            break
+
+        for neighbour in get_neighbours(current, grid):
+            new_cost = cost[current] + 1
+
+            if neighbour not in cost or new_cost < cost[neighbour]:
+                cost[neighbour] = new_cost
+                parent[neighbour] = current
+
+                priority = new_cost + heuristic(neighbour, goal)
+                heapq.heappush(open_set, (priority, neighbour))
+
+    return parent, cost, visited
 
 # 5. 回溯路径
 def backtrack(parent, start, goal):
@@ -102,7 +144,7 @@ def backtrack(parent, start, goal):
 # 展示函数
 def print_grid(grid, path=None, start=None, goal=None):
     path_set = set(path) if path else set()
-    print("\n-----print_grid-----")
+    print("\n|-----print_grid-----|")
     for y in range(len(grid)):
         row = []
 
@@ -121,12 +163,32 @@ def print_grid(grid, path=None, start=None, goal=None):
                 row.append(".")
 
         print(" ".join(row))
-    print("-------------------\n")
+    print("|-------------------|\n")
 
 # 6. 测试
-parent, cost = dijkstra(grid, start, goal)
-path = backtrack(parent, start, goal)
-print_grid(grid, path, start, goal)
+# 测试 A*
+astar_parent, astar_cost, astar_visited = astar(grid, start, goal)
+astar_path = backtrack(astar_parent, start, goal)
 
-print("终点代价：", cost.get(goal))
-print("路径：", path)
+print("\nA* 搜索结果")
+print_grid(grid, astar_path, start, goal)
+print("A* 终点代价：", astar_cost.get(goal))
+print("A* 路径：", astar_path)
+print("A* 访问节点数：", len(astar_visited))
+
+
+# 测试 Dijkstra
+dijkstra_parent, dijkstra_cost, dijkstra_visited = dijkstra(grid, start, goal)
+dijkstra_path = backtrack(dijkstra_parent, start, goal)
+
+print("\nDijkstra 搜索结果")
+print_grid(grid, dijkstra_path, start, goal)
+print("Dijkstra 终点代价：", dijkstra_cost.get(goal))
+print("Dijkstra 路径：", dijkstra_path)
+print("Dijkstra 访问节点数：", len(dijkstra_visited))
+
+
+# 对比
+print("\n搜索效率对比")
+print("Dijkstra：", len(dijkstra_visited))
+print("A*：", len(astar_visited))
