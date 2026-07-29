@@ -43,8 +43,38 @@ def get_neighbours(pos, grid):
 
     return neighbours
 
-print(get_neighbours((0, 0), grid))
-print(get_neighbours((1, 0), grid))
+# print(get_neighbours((0, 0), grid))
+# print(get_neighbours((1, 0), grid))
+
+# 加上方向
+def get_directional_neighbours(state, grid):
+    x, y, current_direction = state
+
+    height = len(grid)
+    width = len(grid[0])
+
+    DIRECTIONS = [
+        (-1, 0, "L"),  # 左
+        (1, 0, "R"),  # 右
+        (0, -1, "U"),  # 上
+        (0, 1, "D"),  # 下
+    ]
+    neighbours = []
+
+    for dx, dy, new_direction in DIRECTIONS:
+        new_x = x + dx
+        new_y = y + dy
+
+        if (
+            0 <= new_x < width
+            and 0 <= new_y < height
+            and grid[new_y][new_x] != 1
+        ):
+            neighbours.append(
+                (new_x, new_y, new_direction)
+            )
+
+    return neighbours
 
 # 3. 曼哈顿距离
 def heuristic(pos, goal):
@@ -121,6 +151,67 @@ def astar(grid, start, goal):
                 heapq.heappush(open_set, (priority, neighbour))
 
     return parent, cost, visited
+# 方向A*
+def directional_astar(grid, start, goal, bend_cost=5):
+    open_set = []
+
+    # 起点没有进入方向
+    start_state = (start[0], start[1], None)
+
+    start_priority = heuristic(start, goal)
+    heapq.heappush(open_set, (start_priority, start_state))
+
+    cost = {start_state: 0}
+    parent = {start_state: None}
+    visited = set()
+
+    goal_state = None
+
+    while open_set:
+        current_priority, current_state = heapq.heappop(open_set)
+
+        if current_state in visited:
+            continue
+
+        visited.add(current_state)
+
+        current_x, current_y, current_direction = current_state
+
+        # 只要位置到达目标即可
+        if (current_x, current_y) == goal:
+            goal_state = current_state
+            break
+
+        for neighbour_state in get_directional_neighbours(
+            current_state,
+            grid
+        ):
+            new_x, new_y, new_direction = neighbour_state
+
+            step_cost = get_step_cost(
+                current_direction,
+                new_direction,
+                bend_cost
+            )
+
+            new_cost = cost[current_state] + step_cost
+
+            if (
+                neighbour_state not in cost
+                or new_cost < cost[neighbour_state]
+            ):
+                cost[neighbour_state] = new_cost
+                parent[neighbour_state] = current_state
+
+                h = heuristic((new_x, new_y), goal)
+                priority = new_cost + h
+
+                heapq.heappush(
+                    open_set,
+                    (priority, neighbour_state)
+                )
+
+    return parent, cost, visited, goal_state
 
 # 5. 回溯路径
 def backtrack(parent, start, goal):
@@ -138,8 +229,34 @@ def backtrack(parent, start, goal):
 
     # 当前得到的是 goal -> start，需要反转
     path.reverse()
-
     return path
+
+def backtrack_directional(parent, goal_state):
+    if goal_state is None:
+        return None
+
+    state_path = []
+    current_state = goal_state
+
+    while current_state is not None:
+        state_path.append(current_state)
+        current_state = parent[current_state]
+
+    state_path.reverse()
+
+    return state_path
+
+# 6.判断转弯cost
+def get_step_cost(current_direction, new_direction, bend_cost=5):
+    move_cost = 1
+
+    if current_direction is None:
+        return move_cost
+
+    if current_direction == new_direction:
+        return move_cost
+
+    return move_cost + bend_cost
 
 # 展示函数
 def print_grid(grid, path=None, start=None, goal=None):
@@ -165,30 +282,58 @@ def print_grid(grid, path=None, start=None, goal=None):
         print(" ".join(row))
     print("|-------------------|\n")
 
-# 6. 测试
-# 测试 A*
-astar_parent, astar_cost, astar_visited = astar(grid, start, goal)
-astar_path = backtrack(astar_parent, start, goal)
+# 去掉状态中的方向，使print_grid正常可用于方向A*
+def states_to_positions(state_path):
+    if state_path is None:
+        return None
 
-print("\nA* 搜索结果")
-print_grid(grid, astar_path, start, goal)
-print("A* 终点代价：", astar_cost.get(goal))
-print("A* 路径：", astar_path)
-print("A* 访问节点数：", len(astar_visited))
+    return [
+        (x, y)
+        for x, y, direction in state_path
+    ]
 
+#计算弯曲数量
+def count_bends(state_path):
+    if not state_path:
+        return 0
 
-# 测试 Dijkstra
-dijkstra_parent, dijkstra_cost, dijkstra_visited = dijkstra(grid, start, goal)
-dijkstra_path = backtrack(dijkstra_parent, start, goal)
+    bend_count = 0
+    previous_direction = None
 
-print("\nDijkstra 搜索结果")
-print_grid(grid, dijkstra_path, start, goal)
-print("Dijkstra 终点代价：", dijkstra_cost.get(goal))
-print("Dijkstra 路径：", dijkstra_path)
-print("Dijkstra 访问节点数：", len(dijkstra_visited))
+    for _, _, direction in state_path:
+        if direction is None:
+            continue
 
+        if (
+            previous_direction is not None
+            and direction != previous_direction
+        ):
+            bend_count += 1
 
-# 对比
-print("\n搜索效率对比")
-print("Dijkstra：", len(dijkstra_visited))
-print("A*：", len(astar_visited))
+        previous_direction = direction
+
+    return bend_count
+
+# 7. 测试
+parent, cost, visited, goal_state = directional_astar(
+    grid,
+    start,
+    goal,
+    bend_cost=5
+)
+
+state_path = backtrack_directional(parent, goal_state)
+path = states_to_positions(state_path)
+
+print_grid(grid, path, start, goal)
+
+print("最终状态：", goal_state)
+print("总代价：", cost.get(goal_state))
+print("状态路径：", state_path)
+print("位置路径：", path)
+print("访问状态数：", len(visited))
+
+# 弯曲数量测试（基准）
+print("移动步数：", len(state_path) - 1)
+print("转弯次数：", count_bends(state_path))
+print("总代价：", cost[goal_state])
