@@ -1,4 +1,5 @@
 import heapq
+
 WIDTH = 15
 HEIGHT = 11
 
@@ -59,7 +60,14 @@ def heuristic(pos, goal):
 
 # 4 A*搜索
 # 方向A*
-def directional_astar(grid, start, goal, bend_cost=5):
+def directional_astar(
+    grid,
+    start,
+    goal,
+    start_direction=None,
+    goal_entry_direction=None,
+    bend_cost=5
+):
     open_set = []
 
     # 起点没有进入方向
@@ -84,16 +92,31 @@ def directional_astar(grid, start, goal, bend_cost=5):
 
         current_x, current_y, current_direction = current_state
 
-        # 只要位置到达目标即可
+        # 到达终点坐标后，还要检查进入方向
         if (current_x, current_y) == goal:
-            goal_state = current_state
-            break
+            if (
+                goal_entry_direction is None
+                or current_direction == goal_entry_direction
+            ):
+                goal_state = current_state
+                break
+
+            # 方向错误，本次到达不算成功
+            continue
 
         for neighbour_state in get_directional_neighbours(
             current_state,
             grid
         ):
             new_x, new_y, new_direction = neighbour_state
+
+            # 起点的第一步必须符合出射方向
+            if (
+                current_state == start_state
+                and start_direction is not None
+                and new_direction != start_direction
+            ):
+                continue
 
             step_cost = get_step_cost(
                 current_direction,
@@ -218,20 +241,23 @@ def count_bends(state_path):
     return bend_count
 
 # 7. 测试
-for bend_cost in [0, 1, 5, 20]:
-    parent, cost, visited, goal_state = directional_astar(
-        grid,
-        start,
-        goal,
-        bend_cost=bend_cost
-    )
+parent, cost, visited, goal_state = directional_astar(
+    grid,
+    start,
+    goal,
+    start_direction="R",
+    goal_entry_direction="R",
+    bend_cost=5
+)
 
-    state_path = backtrack_directional(parent, goal_state)
-    path = states_to_positions(state_path)
+state_path = backtrack_directional(parent, goal_state)
+path = states_to_positions(state_path)
 
-    print(f"\n转弯惩罚：{bend_cost}")
-    print("移动步数：", len(state_path) - 1)
-    print("转弯次数：", count_bends(state_path))
-    print("总代价：", cost.get(goal_state))
+print_grid(grid, path, start, goal)
 
-    print_grid(grid, path, start, goal)
+print("最终状态：", goal_state)
+print("移动步数：", len(state_path) - 1)
+print("转弯次数：", count_bends(state_path))
+print("总代价：", cost.get(goal_state))
+print("起点第一步：", state_path[1])
+print("终点最后状态：", state_path[-1])
