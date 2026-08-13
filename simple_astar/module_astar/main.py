@@ -1,4 +1,5 @@
 from router import route_all_nets
+from gds_export import export_routed_paths
 # ==================== 1. 地图配置 ====================
 
 WIDTH = 25
@@ -46,3 +47,13 @@ routed_paths = route_all_nets(
 
 print("\n最终布线路径：")
 print(routed_paths)
+
+filepath = export_routed_paths(
+    routed_paths,
+    filename="astar_router.gds",
+    grid_size=10,
+    width=0.5,
+    bend_radius=5
+)
+
+print("完整 GDS 已生成：", filepath)
