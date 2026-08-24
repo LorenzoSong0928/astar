@@ -30,13 +30,15 @@ def simplify_path(path):
 
     return simplified
 
-def grid_to_um(path, grid_size=10):
-    """将网格坐标转换为版图中的微米坐标。"""
-    if path is None:
-        return None
+def grid_to_um(path, grid_size=10, grid_height=None):
+    if grid_height is None:
+        raise ValueError("grid_height must be provided")
 
     return [
-        (x * grid_size, y * grid_size)
+        (
+            x * grid_size,
+            (grid_height - 1 - y) * grid_size
+        )
         for x, y in path
     ]
 
@@ -69,7 +71,8 @@ def export_routed_paths(
     grid_size=10,
     width=0.5,
     layer=(1, 0),
-    bend_radius=5
+    bend_radius=5,
+    grid_height=None
 ):
     """将所有已布网络导出到同一个 GDS。"""
 
@@ -81,7 +84,8 @@ def export_routed_paths(
 
         physical_path = grid_to_um(
             simplified,
-            grid_size=grid_size
+            grid_size=grid_size,
+            grid_height=grid_height
         )
 
         waveguide = path_to_waveguide(

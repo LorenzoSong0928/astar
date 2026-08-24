@@ -1,4 +1,4 @@
-'''负责：单条布线相关'''
+"""负责：单条布线相关"""
 
 import heapq
 from grid import get_directional_neighbours
@@ -150,7 +150,6 @@ def count_bends(state_path):
 
     return bend_count
 
-'''是否放在grid好点呢'''
 # 去掉状态中的方向，使print_grid正常可用于方向A*
 def states_to_positions(state_path):
     if state_path is None:
