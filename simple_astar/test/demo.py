@@ -2,7 +2,7 @@ import gdsfactory as gf
 
 from shapely.geometry import box, LineString
 
-from geometry import (
+from simple_astar.photonic_router.geometry import (
     BEND_SPAN,
     WAVEGUIDE_WIDTH,
     MINIMUM_SPACING,
@@ -16,12 +16,12 @@ from geometry import (
     find_routed_conflicts
 )
 
-from astar import (
+from simple_astar.photonic_router.astar import (
     get_curvy_neighbors,
     curvy_astar,
 )
 
-from router import (
+from simple_astar.photonic_router.router import (
     route_grid_curvy,
     register_route_geometry,
     route_nets_curvy_sequential,
@@ -30,7 +30,7 @@ from router import (
     route_net_curvy_with_rr
 )
 
-from gds_export import export_routed_geometries
+from simple_astar.photonic_router.gds_export import export_routed_geometries
 # ============================================================
 # 0. Parameters
 # 1. Create Base Euler Bend
@@ -153,6 +153,12 @@ def export_result_gds(
 # ============================================================
 
 def main():
+
+    # =====================================
+    # Activate generic PDK
+    # =====================================
+
+    gf.gpdk.PDK.activate()
 
     # -------------------------
     # Base bend

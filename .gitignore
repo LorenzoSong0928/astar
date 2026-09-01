@@ -1,8 +1,13 @@
 # PyCharm
 .idea/
+__pycache__/
+*.pyc
 
 # VS Code
 .vscode/
 
 tempCodeRunnerFile.py
 **/tempCodeRunnerFile.py
+
+# gds
+simple_astar/photonic_router/output/*.gds

@@ -4,7 +4,7 @@ from shapely.geometry import Polygon, LineString
 from shapely.affinity import translate, scale, rotate
 from shapely.ops import unary_union
 
-from config import (
+from .config import (
     WAVEGUIDE_WIDTH,
     MINIMUM_SPACING,
     WAVEGUIDE_LAYER,
