@@ -14,6 +14,7 @@ from config import (
 from geometry import (
     evaluate_bend_candidate,
     evaluate_straight_candidate,
+    find_routed_conflicts,
 )
 
 def heuristic(pos, goal):
@@ -183,6 +184,9 @@ def get_curvy_neighbors(
     straight_length=STRAIGHT_LENGTH,
     bend_span=BEND_SPAN,
     width=WAVEGUIDE_WIDTH,
+    boundary=None,
+    routed_geometries=None,
+    strict=True,
 ):
     """
     从当前 position + direction 出发：
@@ -214,10 +218,18 @@ def get_curvy_neighbors(
             minimum_spacing=minimum_spacing,
             length=straight_length,
             width=width,
+            boundary=boundary,
+            routed_geometries=routed_geometries,
+            strict=strict,
         )
     )
 
     if legal:
+        conflict_net_ids = find_routed_conflicts(
+            geometry,
+            routed_geometries,
+            minimum_spacing=minimum_spacing,
+        )
 
         neighbors.append({
             "type": "straight",
@@ -225,6 +237,7 @@ def get_curvy_neighbors(
             "direction": direction,
             "geometry": geometry,
             "cost": straight_length,
+            "conflict_net_ids": conflict_net_ids,
         })
 
     # -------------------------
@@ -237,26 +250,25 @@ def get_curvy_neighbors(
 
         legal, endpoint, reason, geometry = (
             evaluate_bend_candidate(
-                base_bend_polygon=
-                base_bend_polygon,
-
+                base_bend_polygon=base_bend_polygon,
                 position=position,
-
                 old_direction=direction,
-
-                new_direction=
-                new_direction,
-
+                new_direction=new_direction,
                 obstacles=obstacles,
-
-                minimum_spacing=
-                minimum_spacing,
-
+                minimum_spacing=minimum_spacing,
                 bend_span=bend_span,
+                boundary=boundary,
+                routed_geometries=routed_geometries,
+                strict=strict,
             )
         )
 
         if legal:
+            conflict_net_ids = find_routed_conflicts(
+                geometry,
+                routed_geometries,
+                minimum_spacing=minimum_spacing,
+            )
 
             neighbors.append({
                 "type": "bend",
@@ -264,6 +276,7 @@ def get_curvy_neighbors(
                 "direction": new_direction,
                 "geometry": geometry,
                 "cost": bend_length,
+                "conflict_net_ids": conflict_net_ids,
             })
 
     return neighbors
@@ -344,10 +357,15 @@ def curvy_astar(
     start_position,
     start_direction,
     goal,
+    goal_entry_direction,
     base_bend_polygon,
     obstacles,
     bend_length,
     minimum_spacing=MINIMUM_SPACING,
+    boundary=None,
+    routed_geometries=None,
+    strict=True,
+    conflict_penalty=0,
 ):
     """
     Geometry-aware Curvy A*
@@ -373,13 +391,10 @@ def curvy_astar(
     # =====================================
 
     open_set = []
-
     counter = itertools.count()
-
     g_score = {
         start_state: 0
     }
-
     came_from = {}
 
     # 记录从 parent -> current
@@ -447,6 +462,15 @@ def curvy_astar(
 
         if current_position == goal:
 
+            # 如果指定了终点进入方向，
+            # 当前方向必须满足要求
+            if (
+                    goal_entry_direction is not None
+                    and current_direction
+                    != goal_entry_direction
+            ):
+                continue
+
             states, transitions = (
                 reconstruct_path(
                     came_from,
@@ -455,12 +479,24 @@ def curvy_astar(
                 )
             )
 
+            # 汇总整条路径的冲突网络
+            conflict_net_ids = set()
+
+            for transition in transitions:
+                conflict_net_ids.update(
+                    transition.get(
+                        "conflict_net_ids",
+                        set()
+                    )
+                )
+
             return {
                 "success": True,
                 "cost": current_best_g,
                 "states": states,
                 "transitions": transitions,
                 "expanded_nodes": expanded_nodes,
+                "conflict_net_ids": conflict_net_ids,
             }
 
         # =================================
@@ -475,6 +511,9 @@ def curvy_astar(
             obstacles=obstacles,
             bend_length=bend_length,
             minimum_spacing=minimum_spacing,
+            boundary=boundary,
+            routed_geometries=routed_geometries,
+            strict=strict,
         )
 
         # =================================
@@ -495,9 +534,28 @@ def curvy_astar(
                 new_direction
             )
 
+            # Step Cost
+            conflict_net_ids = neighbor.get(
+                "conflict_net_ids",
+                set()
+            )
+
+            conflict_cost = 0
+
+            if not strict:
+                conflict_cost = (
+                        conflict_penalty
+                        * len(conflict_net_ids)
+                )
+
+            step_cost = (
+                    neighbor["cost"]
+                    + conflict_cost
+            )
+
             new_g = (
-                current_best_g
-                + neighbor["cost"]
+                    current_best_g
+                    + step_cost
             )
 
             old_g = g_score.get(
@@ -517,14 +575,21 @@ def curvy_astar(
                     current_state
                 )
 
-                transition_from[new_state] = (
-                    neighbor
+                transition = neighbor.copy()
+
+                transition["conflict_cost"] = (
+                    conflict_cost
                 )
 
-                # -------------------------
-                # h
-                # -------------------------
+                transition["step_cost"] = (
+                    step_cost
+                )
 
+                transition_from[new_state] = (
+                    transition
+                )
+
+                # h
                 h = curvy_heuristic(
                     neighbor["position"],
                     goal,
@@ -550,11 +615,11 @@ def curvy_astar(
     # =====================================
     # Failed
     # =====================================
-
     return {
         "success": False,
         "cost": None,
         "states": [],
         "transitions": [],
         "expanded_nodes": expanded_nodes,
+        "conflict_net_ids": set(),
     }

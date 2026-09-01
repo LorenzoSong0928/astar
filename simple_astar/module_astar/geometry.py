@@ -2,6 +2,7 @@ import gdsfactory as gf
 
 from shapely.geometry import Polygon, LineString
 from shapely.affinity import translate, scale, rotate
+from shapely.ops import unary_union
 
 from config import (
     WAVEGUIDE_WIDTH,
@@ -47,35 +48,83 @@ def is_geometry_legal(
     waveguide_polygon,
     obstacle_polygons,
     minimum_spacing=MINIMUM_SPACING,
+    boundary=None,
+    routed_geometries=None,
 ):
     """
-    检查真实波导 geometry 是否满足：
-    1. 不与障碍物碰撞
-    2. minimum spacing
+    检查真实波导 geometry：
+
+    1. Routing boundary
+    2. Fixed obstacle collision / spacing
+    3. 已布网络 collision / spacing
     """
 
-    for i, obstacle in enumerate(obstacle_polygons):
+    # =====================================
+    # 1. Boundary
+    # =====================================
 
-        # 直接碰撞
-        if waveguide_polygon.intersects(obstacle):
+    if boundary is not None:
 
+        if not boundary.covers(waveguide_polygon):
+            return False, "Out of routing boundary"
+
+    # =====================================
+    # 2. Fixed Obstacles
+    # =====================================
+
+    for i, obstacle in enumerate(
+        obstacle_polygons
+    ):
+
+        if waveguide_polygon.intersects(
+            obstacle
+        ):
             return (
                 False,
                 f"Collision with obstacle {i}"
             )
 
-        # 最小间距
         distance = waveguide_polygon.distance(
             obstacle
         )
 
         if distance < minimum_spacing:
-
             return (
                 False,
                 f"Spacing violation with obstacle {i}: "
                 f"{distance:.3f} < {minimum_spacing}"
             )
+
+    # =====================================
+    # 3. Routed Waveguides
+    # =====================================
+
+    if routed_geometries is not None:
+
+        for net_id, routed_geometry in (
+            routed_geometries.items()
+        ):
+
+            # 直接碰撞
+            if waveguide_polygon.intersects(
+                routed_geometry
+            ):
+                return (
+                    False,
+                    f"Collision with routed net {net_id}"
+                )
+
+            # 波导间距
+            distance = waveguide_polygon.distance(
+                routed_geometry
+            )
+
+            if distance < minimum_spacing:
+                return (
+                    False,
+                    f"Spacing violation with routed net {net_id}: "
+                    f"{distance:.3f} < {minimum_spacing}"
+                )
 
     return True, "Legal"
 
@@ -278,6 +327,9 @@ def evaluate_bend_candidate(
     obstacles,
     minimum_spacing=MINIMUM_SPACING,
     bend_span=BEND_SPAN,
+    boundary=None,
+    routed_geometries=None,
+    strict=True,
 ):
     """
     生成 Bend candidate，并进行 Geometry DRC。
@@ -297,10 +349,18 @@ def evaluate_bend_candidate(
         bend_span
     )
 
+    drc_routed_geometries = (
+        routed_geometries
+        if strict
+        else None
+    )
+
     legal, reason = is_geometry_legal(
         geometry,
         obstacles,
-        minimum_spacing
+        minimum_spacing,
+        boundary=boundary,
+        routed_geometries=drc_routed_geometries,
     )
 
     return legal, endpoint, reason, geometry
@@ -313,6 +373,9 @@ def evaluate_straight_candidate(
     minimum_spacing=MINIMUM_SPACING,
     length=STRAIGHT_LENGTH,
     width=WAVEGUIDE_WIDTH,
+    boundary=None,
+    routed_geometries=None,
+    strict=True,
 ):
     """
     生成 Straight candidate，并进行 Geometry DRC。
@@ -325,10 +388,69 @@ def evaluate_straight_candidate(
         width
     )
 
+    drc_routed_geometries = (
+        routed_geometries
+        if strict
+        else None
+    )
+
     legal, reason = is_geometry_legal(
         geometry,
         obstacles,
-        minimum_spacing
+        minimum_spacing,
+        boundary=boundary,
+        routed_geometries=drc_routed_geometries,
     )
 
     return legal, endpoint, reason, geometry
+
+def merge_route_geometry(transitions):
+    """
+    将一条 route 中所有 straight / bend geometry
+    合并成完整的真实波导 geometry。
+    """
+
+    geometries = [
+        transition["geometry"]
+        for transition in transitions
+    ]
+
+    if not geometries:
+        return None
+
+    return unary_union(geometries)
+
+def find_routed_conflicts(
+    waveguide_polygon,
+    routed_geometries,
+    minimum_spacing=MINIMUM_SPACING,
+):
+    """
+    找出 candidate geometry 与哪些已布网络发生
+    collision 或 spacing violation。
+
+    返回：
+        set of net_id
+    """
+
+    conflicts = set()
+
+    if routed_geometries is None:
+        return conflicts
+
+    for net_id, routed_geometry in routed_geometries.items():
+
+        # Collision
+        if waveguide_polygon.intersects(routed_geometry):
+            conflicts.add(net_id)
+            continue
+
+        # Spacing violation
+        distance = waveguide_polygon.distance(
+            routed_geometry
+        )
+
+        if distance < minimum_spacing:
+            conflicts.add(net_id)
+
+    return conflicts
